@@ -15,7 +15,10 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   pcl_ros
   pcl_conversions
+  tf
+  tf_conversions 
 )
+find_package(Eigen3 REQUIRED)
 
 # add_compile_options(-std=c++11)
 find_package(PCL 1.7 REQUIRED)
@@ -45,6 +48,7 @@ catkin_package(
 ###########
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 # add_executable(omp_visualize
@@ -59,17 +63,18 @@ include_directories(
 #   ndt_omp
 # )
 
-# add_executable(omp_optimizer
-#   src/omp_optimizer.cpp
-# )
-# add_dependencies(omp_optimizer
-#   ndt_omp
-# )
-# target_link_libraries(omp_optimizer
-#   ${catkin_LIBRARIES}
-#   ${PCL_LIBRARIES}
-#   ndt_omp
-# )
+add_executable(ndt_optimizer
+  src/ndt_optimizer.cpp
+)
+add_dependencies(ndt_optimizer
+  ndt_omp
+)
+target_link_libraries(ndt_optimizer
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
+  ndt_omp
+)
 
 add_executable(ndt_odometry
   src/ndt_odometry.cpp
@@ -80,6 +85,7 @@ add_dependencies(ndt_odometry
 target_link_libraries(ndt_odometry
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
   ndt_omp
 )
 
@@ -92,6 +98,7 @@ add_dependencies(ndt_slam
 target_link_libraries(ndt_slam
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
   ndt_omp
 )
 
