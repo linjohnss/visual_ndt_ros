@@ -45,20 +45,31 @@ int main(int argc, char** argv) {
     pub_targetcloud = nh.advertise<sensor_msgs::PointCloud2> ("/target_cloud", 1);
     pub_transformcloud = nh.advertise<sensor_msgs::PointCloud2> ("/transform_cloud", 1);
     is_initial = true;
-    // ros::spin ();
-    // tf::TransformBroadcaster broadcaster;
-    // tf::TransformListener listener;
-    // listener.waitForTransform(map_frame, "/camera_depth", ros::Time(0), ros::Duration(1.0) );
-    // listener.lookupTransform(map_frame, "/camera_depth", ros::Time(0), transform);
-    // create_map(lidar_map_dir);
-    // ros::Rate rate(10.0);
-    // while (nh.ok()){
-    //     const std::lock_guard<std::mutex> lock(mutex_);
-    //     broadcaster.sendTransform(tf::StampedTransform(transform_final, ros::Time::now(), map_frame, odom_frame));
-    //     rate.sleep();
-    //     ros::spinOnce();
-    // }
-    ros::spin ();
+    tf::TransformBroadcaster broadcaster;
+    tf::TransformListener listener;
+    create_map(lidar_map_dir);
+    ros::Rate rate(10.0);
+    while (nh.ok()){
+        if(is_initial) {
+            try{
+                const std::lock_guard<std::mutex> lock(mutex_);
+                listener.waitForTransform(map_frame, "/camera_depth", ros::Time(0), ros::Duration(1.0) );
+                listener.lookupTransform(map_frame, "/camera_depth", ros::Time(0), transform_final);
+                broadcaster.sendTransform(tf::StampedTransform(transform_final, ros::Time::now(), map_frame, odom_frame));
+            } catch (tf::TransformException ex){
+                ROS_WARN("%s",ex.what());
+                ros::Duration(1.0).sleep();
+                continue;
+            }
+            is_initial = false;
+        }
+        else {
+            const std::lock_guard<std::mutex> lock(mutex_);
+            broadcaster.sendTransform(tf::StampedTransform(transform_final, ros::Time::now(), map_frame, odom_frame));
+        }
+        rate.sleep();
+        ros::spinOnce();
+    }
 	return 0;
 }
 
@@ -71,48 +82,16 @@ sensor_msgs::PointCloud2 pcl2pointcloud (pcl::PointCloud<pcl::PointXYZ>::Ptr clo
 
 void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
     //tf parameter
-    static tf::TransformBroadcaster broadcaster;
     static tf::TransformListener listener;
     static tf::StampedTransform transform;
-    static tf::Transform transform_pose;
     // initialize
-    if(is_initial) {
-        if(pcl::io::loadPCDFile("/home/ros20/Desktop/ndt_ws/src/ndt_odometry/map/target_cloud.pcd", *target_cloud)) {
-            std::cerr << "failed to load " << std::endl;
-            return;
-        }
-        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZ>());
-        pcl::VoxelGrid<pcl::PointXYZ> voxelgrid;
-        voxelgrid.setLeafSize(0.05f, 0.05f, 0.05f);
-        voxelgrid.setInputCloud(target_cloud);
-        voxelgrid.filter(*downsampled);
-        // target_cloud = downsampled;
-        Eigen::Affine3f r = Eigen::Affine3f::Identity();
-        r.translation() << 0.0, 0.0, 0.0;
-        r.rotate(Eigen::AngleAxisf(M_PI/2, Eigen::Vector3f::UnitZ()));
-        pcl::transformPointCloud(*downsampled, *target_cloud, r);
-
-    	std::cout << "Loaded " << target_cloud->size () << " data points from target" << std::endl;
-        try{
-            listener.waitForTransform(map_frame, "/camera_depth", ros::Time(0), ros::Duration(1.0) );
-            listener.lookupTransform(map_frame, "/camera_depth", ros::Time(0), transform);
-            broadcaster.sendTransform(tf::StampedTransform(transform, ros::Time::now(), map_frame, odom_frame));
-            is_initial = false;
-        } catch (tf::TransformException ex){
-            ROS_ERROR("%s",ex.what());
-            ros::Duration(1.0).sleep();
-        }
-        ndt_omp->setInputTarget(target_cloud);
-    }
-    else{
+    if(!is_initial) {
         pcl::fromROSMsg (*msg, *source_cloud);
     
         //downsampling
         pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZ>());
-        
         pcl::VoxelGrid<pcl::PointXYZ> voxelgrid;
         voxelgrid.setLeafSize(0.05f, 0.05f, 0.05f);
-
         voxelgrid.setInputCloud(source_cloud);
         voxelgrid.filter(*downsampled);
         source_cloud = downsampled;
@@ -122,17 +101,17 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
             listener.waitForTransform(map_frame, odom_frame, ros::Time(0), ros::Duration(1.0) );
             listener.lookupTransform(map_frame, odom_frame, ros::Time(0), transform);
         } catch (tf::TransformException ex){
-            ROS_ERROR("%s",ex.what());
+            ROS_WARN("%s",ex.what());
             ros::Duration(1.0).sleep();
+            return;
         }
         Eigen::Quaterniond init_rotation_Qua = Eigen::Quaterniond(transform.getRotation());
         Eigen::Translation3f init_translation (transform.getOrigin().x(), transform.getOrigin().y(), transform.getOrigin().z());
         Eigen::Matrix3f init_rotation = init_rotation_Qua.toRotationMatrix().cast <float> ();
         Eigen::Matrix4f init_guess = (init_translation * init_rotation).matrix ();
 
-        // pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>::Ptr ndt_omp(new pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>());
         ndt_omp->setInputSource(source_cloud);	
-        ndt_omp->setTransformationEpsilon (0.01);
+        ndt_omp->setTransformationEpsilon (0.001);
         ndt_omp->setStepSize (0.1); 
         ndt_omp->setResolution(1.0);
         ndt_omp->setMaximumIterations (100);
@@ -144,12 +123,10 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
         Eigen::Affine3d target_pose(ndt_omp->getFinalTransformation().cast <double> ());
         if((fabs(target_pose(0,3))+fabs(target_pose(1,3))+fabs(target_pose(2,3))) > 0.4)        //transform pose
         {
-            // const std::lock_guard<std::mutex> lock(mutex_);
+            const std::lock_guard<std::mutex> lock(mutex_);
             tf::transformEigenToTF(target_pose, transform_final);
-            broadcaster.sendTransform(tf::StampedTransform(transform_final, ros::Time::now(), map_frame, odom_frame));
             pub_transformcloud.publish( pcl2pointcloud(transform_cloud, map_frame));
         }
-
     }
     pub_targetcloud.publish( pcl2pointcloud(target_cloud, map_frame));
     return;
@@ -166,7 +143,6 @@ void create_map(char *map_dir)
     voxelgrid.setLeafSize(0.05f, 0.05f, 0.05f);
     voxelgrid.setInputCloud(target_cloud);
     voxelgrid.filter(*downsampled);
-    // target_cloud = downsampled;
     Eigen::Affine3f r = Eigen::Affine3f::Identity();
     r.translation() << 0.0, 0.0, 0.0;
     r.rotate(Eigen::AngleAxisf(M_PI/2, Eigen::Vector3f::UnitZ()));
