@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ndt_odometry)
+project(visual_ndt_ros)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -51,17 +51,18 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
 )
 
-# add_executable(omp_visualize
-#   src/omp_visualize.cpp
-# )
-# add_dependencies(omp_visualize
-#   ndt_omp
-# )
-# target_link_libraries(omp_visualize
-#   ${catkin_LIBRARIES}
-#   ${PCL_LIBRARIES}
-#   ndt_omp
-# )
+add_executable(pointcloud_mapping
+  src/pointcloud_mapping.cpp
+)
+add_dependencies(pointcloud_mapping
+  ndt_omp
+)
+target_link_libraries(pointcloud_mapping
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
+  ndt_omp
+)
 
 add_executable(ndt_optimizer
   src/ndt_optimizer.cpp
@@ -88,19 +89,3 @@ target_link_libraries(ndt_odometry
   ${EIGEN3_LIBRARIES}
   ndt_omp
 )
-
-add_executable(ndt_slam
-  src/ndt_slam.cpp
-)
-add_dependencies(ndt_slam
-  ndt_omp
-)
-target_link_libraries(ndt_slam
-  ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-  ndt_omp
-)
-
-
-

@@ -35,13 +35,13 @@ char map_frame[] = "map";
 char odom_frame[] = "start_of_service";
 char sensor_frame[] = "camera_depth";
 char sub_cloud[] = "/tango/point_cloud";
-char lidar_map_dir[] = "/home/ros20/Desktop/ndt_ws/src/ndt_odometry/map/target_cloud.pcd";
+char lidar_map_dir[] = "/home/ros20/Desktop/ndt_ws/src/visual_ndt_ros/map/target_cloud.pcd";
 tf::StampedTransform transform_final;
 tf::StampedTransform transform;
 std::mutex mutex_;
 
 int main(int argc, char** argv) {
-    ros::init (argc, argv, "ndt_odometry");
+    ros::init (argc, argv, "ndt_optimizer");
     ros::NodeHandle nh;
     sub_sourcecloud = nh.subscribe (sub_cloud, 1, cloud_callback);
     pub_targetcloud = nh.advertise<sensor_msgs::PointCloud2> ("/target_cloud", 10);

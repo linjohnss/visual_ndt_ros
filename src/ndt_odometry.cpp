@@ -19,8 +19,6 @@ sensor_msgs::PointCloud2 pcl2pointcloud (pcl::PointCloud<pcl::PointXYZ>::Ptr clo
 void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
 void create_map(char *map_dir);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr target_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-pcl::PointCloud<pcl::PointXYZ>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZ>());
 pcl::PointCloud<pcl::PointXYZ>::Ptr transform_cloud(new pcl::PointCloud<pcl::PointXYZ>());
 ros::Subscriber sub_sourcecloud;
 ros::Publisher pub_targetcloud;
@@ -33,11 +31,19 @@ bool fusion_guess = false;
 char map_frame[] = "start_of_service";
 char odom_frame[] = "ndt_transformed";
 char sub_cloud[] = "/tango/point_cloud";
-char lidar_map_dir[] = "/home/ros20/Desktop/ndt_ws/src/ndt_odometry/map/target_cloud.pcd";
+char lidar_map_dir[] = "/home/ros20/Desktop/ndt_ws/src/visual_ndt_ros/map/lab_arround2.pcd";
 Eigen::Matrix4f pre_trans, fusion_pre_trans;
 Eigen::Matrix4f delta_trans;
 tf::StampedTransform transform_final;
 std::mutex mutex_;
+
+class MatchPoint
+{
+  public:
+  Eigen::Matrix4f transMatrix = Eigen::Matrix4f::Identity(4,4);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{new pcl::PointCloud<pcl::PointXYZ>};
+};
+std::vector<MatchPoint> multiPoint;
 
 int main(int argc, char** argv) {
     ros::init (argc, argv, "ndt_odometry");
@@ -93,20 +99,15 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
     static tf::StampedTransform transform;
     // initialize
     if(!is_initial) {
-        pcl::fromROSMsg (*msg, *source_cloud);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr curr_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        pcl::PointCloud<pcl::PointXYZ>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        pcl::fromROSMsg (*msg, *curr_cloud);
         std::vector<int> indices;
-        pcl::removeNaNFromPointCloud(*source_cloud, *source_cloud, indices);
-    
-        // downsampling
-        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZ>());
-        pcl::VoxelGrid<pcl::PointXYZ> voxelgrid;
-        voxelgrid.setLeafSize(0.05f, 0.05f, 0.05f);
-        voxelgrid.setInputCloud(source_cloud);
-        voxelgrid.filter(*downsampled);
-        source_cloud = downsampled;
+        pcl::removeNaNFromPointCloud(*curr_cloud, *curr_cloud, indices);
         
         //Set initial alignment estimate found using linear predicted pose.
         Eigen::Matrix4f initial_pose_matrix;
+        Eigen::Matrix4f curr_trans;
         if (fusion_guess) {
             try{
                 listener.lookupTransform(map_frame, "/camera_depth", ros::Time(0), transform);
@@ -117,11 +118,26 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
             Eigen::Quaterniond init_rotation_Qua = Eigen::Quaterniond(transform.getRotation());
             Eigen::Translation3f init_translation (transform.getOrigin().x(), transform.getOrigin().y(), transform.getOrigin().z());
             Eigen::Matrix3f init_rotation = init_rotation_Qua.toRotationMatrix().cast <float> ();
-            Eigen::Matrix4f cur_trans = (init_translation * init_rotation).matrix ();
-            delta_trans = fusion_pre_trans.inverse() * cur_trans;
-            fusion_pre_trans = cur_trans;
+            curr_trans = (init_translation * init_rotation).matrix ();
+            delta_trans = fusion_pre_trans.inverse() * curr_trans;
+            fusion_pre_trans = curr_trans;
         }
         initial_pose_matrix = pre_trans * delta_trans;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        Eigen::Matrix4f curr_trans_inv = curr_trans.inverse();
+        *source_cloud = *curr_cloud;
+        for (int i=0;i<multiPoint.size();i++) {
+            pcl::transformPointCloud(*multiPoint[i].cloud, *tmp_cloud, curr_trans_inv * multiPoint[i].transMatrix);
+            *source_cloud += *tmp_cloud;
+        }
+
+        // downsampling
+        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZ>());
+        pcl::VoxelGrid<pcl::PointXYZ> voxelgrid;
+        voxelgrid.setLeafSize(0.05f, 0.05f, 0.05f);
+        voxelgrid.setInputCloud(source_cloud);
+        voxelgrid.filter(*downsampled);
+        source_cloud = downsampled;
 
         ndt_omp->setInputSource(source_cloud);	
         ndt_omp->setTransformationEpsilon (0.01);
@@ -134,13 +150,19 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
         
         ROS_INFO(" score: %f", ndt_omp->getFitnessScore());
         Eigen::Affine3f target_pose(ndt_omp->getFinalTransformation());
-        if(((fabs(target_pose(0,3) - pre_trans(0,3)) + 
-            fabs(target_pose(1,3) - pre_trans(1,3)) + 
-            fabs(target_pose(2,3) - pre_trans(2,3))) > 0.05) &&
-            ndt_omp->hasConverged()) {
+        if ((fabs(target_pose(0,3) - pre_trans(0,3)) + 
+             fabs(target_pose(1,3) - pre_trans(1,3)) +
+             fabs(target_pose(2,3) - pre_trans(2,3))) > 0.05) {
             ROS_INFO(" transformed!");
             const std::lock_guard<std::mutex> lock(mutex_);
-            tf::transformEigenToTF(target_pose.cast <double> (), transform_final);      
+            tf::transformEigenToTF(target_pose.cast <double> (), transform_final);
+            MatchPoint matchpoint;
+            matchpoint.cloud->points.clear();
+            matchpoint.cloud->points.assign(curr_cloud->points.begin(),curr_cloud->points.end()); 
+            matchpoint.transMatrix = curr_trans;
+            multiPoint.push_back(matchpoint);
+            if(multiPoint.size()>10) 
+                multiPoint.erase(std::begin(multiPoint));
         }
         else {
             target_pose.matrix() = initial_pose_matrix;
@@ -158,6 +180,7 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
 
 void create_map(char *map_dir)
 {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr target_cloud(new pcl::PointCloud<pcl::PointXYZ>());
     if(pcl::io::loadPCDFile(map_dir, *target_cloud)) {
         std::cerr << "failed to load " << std::endl;
         return;
