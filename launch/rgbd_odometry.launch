@@ -1,0 +1,26 @@
+<launch>
+    <arg name = "rosbag_file" value = "/home/ros20/Desktop/ndt_ws/lab_arround2.bag"/>
+    <param name="/use_sim_time" value="true"/>
+    <node name="player" pkg="rosbag" type="play" args="--clock -r 1.0 $(arg rosbag_file)" cwd="node" required="true"/>
+    <!-- <node pkg="tf" type="static_transform_publisher" name="base_device_link" args="0 0 0 0 0 0 base_link device 100" /> -->
+    <node name="republish_rgb" type="republish" pkg="image_transport" args="compressed in:=/tango/camera/color_1/image_raw raw out:=/tango/camera/color_1/image_raw/relay" />
+
+    <node name="pointcloud_to_depthimage" pkg="rtabmap_ros" type="pointcloud_to_depthimage">
+      <remap from="cloud"            to="/tango/point_cloud"/>
+      <remap from="image"            to="/tango/registered_depth"/>
+      <remap from="camera_info"      to="/tango/camera/color_1/camera_info"/>
+    
+      <param name="fixed_frame_id"   type="string"   value="camera_depth"/>
+      <param name="decimation"       type="int"      value="8"/>
+      <param name="fill_holes_size"  type="int"      value="5"/>
+    </node>
+    <!-- Odometry -->
+    <node pkg="rtabmap_ros" type="rgbd_odometry" name="rgbd_odometry" output="screen">
+      <param name="subscribe_rgbd" type="bool"   value="false"/>
+      <param name="frame_id"       type="string" value="device"/>
+
+      <remap from="depth/image" to="/tango/registered_depth"/>
+      <remap from="rgb/camera_info" to="/tango/camera/color_1/camera_info"/>
+      <remap from="rgb/image" to="/tango/camera/color_1/image_raw/relay"/>
+    </node>
+</launch>

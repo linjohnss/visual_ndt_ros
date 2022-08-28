@@ -28,7 +28,8 @@ pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>::Ptr ndt_omp(
 
 bool is_initial;
 bool fusion_guess = false;
-char map_frame[] = "start_of_service";
+// char map_frame[] = "start_of_service";
+char map_frame[] = "camera_init";
 char odom_frame[] = "ndt_transformed";
 char sub_cloud[] = "/tango/point_cloud";
 char lidar_map_dir[] = "/home/ros20/Desktop/ndt_ws/src/visual_ndt_ros/map/lab_arround2.pcd";
@@ -141,7 +142,7 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
 
         ndt_omp->setInputSource(source_cloud);	
         ndt_omp->setTransformationEpsilon (0.01);
-        ndt_omp->setStepSize (0.01); 
+        ndt_omp->setStepSize (0.001); 
         ndt_omp->setResolution(1.0);
         ndt_omp->setMaximumIterations (35);
         ndt_omp->setNumThreads(10);
@@ -191,10 +192,11 @@ void create_map(char *map_dir)
     voxelgrid.setInputCloud(target_cloud);
     voxelgrid.filter(*downsampled);
     // lidar frame transform to camera frame
-    Eigen::Affine3f r = Eigen::Affine3f::Identity();
-    r.translation() << 0.0, 0.0, 0.0;
-    r.rotate(Eigen::AngleAxisf(M_PI/2, Eigen::Vector3f::UnitZ()));
-    pcl::transformPointCloud(*downsampled, *target_cloud, r);
+    // Eigen::Affine3f r = Eigen::Affine3f::Identity();
+    // r.translation() << 0.0, 0.0, 0.0;
+    // r.rotate(Eigen::AngleAxisf(M_PI/2, Eigen::Vector3f::UnitZ()));
+    // pcl::transformPointCloud(*downsampled, *target_cloud, r);
+    target_cloud = downsampled;
     ROS_INFO("Loaded %zu data points from target", target_cloud->size ());
     ndt_omp->setInputTarget(target_cloud);
     pub_targetcloud.publish( pcl2pointcloud(target_cloud, map_frame));

@@ -1,0 +1,18 @@
+<launch>
+    <arg name="node_start_delay" default="30.0" />  
+    <arg name="open_rviz" default="true"/>
+    <arg name = "rosbag_file" value = "/home/ros20/Desktop/ndt_ws/lab_arround2.bag" />
+
+    <!-- <node name="ndt_optimizer" pkg="visual_ndt_ros" type="ndt_optimizer" output="screen"/> -->
+    <node name="ndt_odometry" pkg="visual_ndt_ros" type="ndt_odometry" output="screen"/>
+
+    <param name="/use_sim_time" value="true"/>
+    <node name="player" pkg="rosbag" type="play" args="--clock -r 1.0 $(arg rosbag_file)" cwd="node" required="true" />
+    <!-- <node pkg="tf" type="static_transform_publisher" name="lidar_visual_link" args="0 0 0 -1.5707963267948966 0 0 camera_init start_of_service 100" /> -->
+    <node pkg="tf" type="static_transform_publisher" name="lidar_visual_link" args="0.2 0 0 -1.5707963267948966 0 0  camera_init start_of_service 100" />
+
+    <!-- rviz -->
+    <group if="$(arg open_rviz)"> 
+        <node pkg="rviz" type="rviz" name="rviz" required="true" args="-d $(find visual_ndt_ros)/rviz/ndt_tango.rviz"/>
+    </group>
+</launch>   
