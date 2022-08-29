@@ -141,8 +141,8 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
         source_cloud = downsampled;
 
         ndt_omp->setInputSource(source_cloud);	
-        ndt_omp->setTransformationEpsilon (0.01);
-        ndt_omp->setStepSize (0.001); 
+        ndt_omp->setTransformationEpsilon (0.001);
+        ndt_omp->setStepSize (0.01); 
         ndt_omp->setResolution(1.0);
         ndt_omp->setMaximumIterations (35);
         ndt_omp->setNumThreads(10);
@@ -151,9 +151,18 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
         
         ROS_INFO(" score: %f", ndt_omp->getFitnessScore());
         Eigen::Affine3f target_pose(ndt_omp->getFinalTransformation());
-        if ((fabs(target_pose(0,3) - pre_trans(0,3)) + 
-             fabs(target_pose(1,3) - pre_trans(1,3)) +
-             fabs(target_pose(2,3) - pre_trans(2,3))) > 0.05) {
+        if (multiPoint.size() == 0) {
+            const std::lock_guard<std::mutex> lock(mutex_);
+            tf::transformEigenToTF(target_pose.cast <double> (), transform_final);
+            MatchPoint matchpoint;
+            matchpoint.cloud->points.clear();
+            matchpoint.cloud->points.assign(curr_cloud->points.begin(),curr_cloud->points.end()); 
+            matchpoint.transMatrix = curr_trans;
+            multiPoint.push_back(matchpoint);
+        }
+        else if ((fabs(curr_trans(0,3) - multiPoint.back().transMatrix(0,3)) + 
+             fabs(curr_trans(1,3) - multiPoint.back().transMatrix(1,3)) +
+             fabs(curr_trans(2,3) - multiPoint.back().transMatrix(2,3))) > 0.5) {
             ROS_INFO(" transformed!");
             const std::lock_guard<std::mutex> lock(mutex_);
             tf::transformEigenToTF(target_pose.cast <double> (), transform_final);
