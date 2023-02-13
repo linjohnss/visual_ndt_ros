@@ -1,7 +1,7 @@
 <launch>
     <arg name="node_start_delay" default="30.0" />  
     <arg name="open_rviz" default="true"/>
-    <arg name = "rosbag_file" value = "/home/ros20/Desktop/ndt_ws/lab_arround2.bag" />
+    <arg name = "rosbag_file" value = "$(find visual_ndt_ros)/../../tango_test.bag" />
 
     <!-- <node name="ndt_optimizer" pkg="visual_ndt_ros" type="ndt_optimizer" output="screen"/> -->
     <node name="ndt_odometry" pkg="visual_ndt_ros" type="ndt_odometry" output="screen"/>

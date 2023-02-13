@@ -32,7 +32,7 @@ bool fusion_guess = false;
 char map_frame[] = "camera_init";
 char odom_frame[] = "ndt_transformed";
 char sub_cloud[] = "/tango/point_cloud";
-char lidar_map_dir[] = "/home/ros20/Desktop/ndt_ws/src/visual_ndt_ros/map/lab_arround2.pcd";
+char lidar_map_dir[] = "/home/point/ndt_test/tango_test.pcd";
 Eigen::Matrix4f pre_trans, fusion_pre_trans;
 Eigen::Matrix4f delta_trans;
 tf::StampedTransform transform_final;
@@ -141,9 +141,9 @@ void cloud_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
         source_cloud = downsampled;
 
         ndt_omp->setInputSource(source_cloud);	
-        ndt_omp->setTransformationEpsilon (0.001);
-        ndt_omp->setStepSize (0.01); 
-        ndt_omp->setResolution(1.0);
+        ndt_omp->setTransformationEpsilon (0.01);
+        ndt_omp->setStepSize (0.1); 
+        ndt_omp->setResolution(1.5);
         ndt_omp->setMaximumIterations (35);
         ndt_omp->setNumThreads(10);
         ndt_omp->setNeighborhoodSearchMethod(pclomp::DIRECT7);
